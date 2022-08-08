@@ -1,0 +1,215 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+import holoviews as hv
+hv.extension('bokeh')
+
+
+# In[2]:
+
+
+import numpy as np
+import scipy.signal
+
+
+# # Nonparametric modeling
+# 
+# 
+# Non-parametric models are statistical models that do not assume an underlying distribution
+# 
+# In this lesson we will review two non-parametric models: Histograms and Kernel Density Estimation (KDE). More advanced non-parametric models and methods will be reviewed in future lectures
+# 
+
+# ## The Histogram
+# 
+# The histogram is a numerical representation of a distribution which allows us to visualize our data and explore its statistical features
+# 
+# In its simplest version the histogram is built by dividing the data range in **bins** and counting the observations that fall on a given bin (frequency). In this case the parameters that we have to provide are the size and location of the bins
+
+# ### Example
+# 
+# A histogram can be easily computed using 
+# 
+# ```python
+# numpy.histogram(a, # the data
+#                 bins=10, # number of bins (int) or array of edges
+#                 range=None, # range of the bins (only used if bins is an int)
+#                 density=None, # wheter to return frequencies (counts) or density
+#                 ...
+#                )
+# ```
+# 
+# This function returns a tuple with the edges and the frequencies/densities of the bins
+# 
+# The following example generates random samples from a mixture of gaussian distributions. Then the histogram of the samples and the underlying distribution are shown. Use the slider to explore the influence of number of bins
+
+# In[3]:
+
+
+class GaussianMixture:
+    
+    def __init__(self, locs, scales, weights):
+        self.weights = weights
+        self.dists = []        
+        for loc, scale in zip(locs, scales):
+            self.dists.append(scipy.stats.norm(loc=loc, scale=scale))
+            
+    def pdf(self, x):
+        px = 0.0
+        for dist, weight in zip(self.dists, self.weights):
+            px += weight*dist.pdf(x)
+        return px
+    
+    def rvs(self, N, seed=None):
+        samples = []
+        for dist, weight in zip(self.dists, self.weights):
+            samples.append(dist.rvs(size=int(weight*N), random_state=seed))
+        return np.concatenate(samples)
+            
+dist = GaussianMixture(locs=[-4, 3], scales=[2, 2], weights=[0.7, 0.3])
+samples = dist.rvs(1000, seed=1234)
+x = np.linspace(np.amin(samples), np.amax(samples), num=1000)
+pdf = dist.pdf(x)
+
+
+# In[4]:
+
+
+histograms = {}
+for nbins in [1, 2, 5, 10, 20, 50, 100]:
+    histograms[nbins] = np.histogram(samples, bins=nbins, 
+                                     range=(np.amin(samples), np.amax(samples)), 
+                                     density=True)
+
+
+# In[5]:
+
+
+dist_plot = hv.Curve((x, pdf)).opts(line_width=2, color='k', width=500, height=350)
+hmap = hv.HoloMap(kdims='Number of bins')
+for key, (freqs, bins) in histograms.items():
+    hmap[key] = hv.Histogram((bins, freqs), kdims='x', vdims='Density').opts(alpha=0.75)
+
+hmap * dist_plot
+
+
+# :::{note}
+# 
+# - A small number of bins misses the features of the distribution, e.g. multimodality
+# - A large number of bins introduces noise
+# 
+# :::
+
+# ### How to select the number of bins?
+# 
+# The number of bins could be cross-validated using the data. A broadly used metric for to cross-validate histograms is the Asymptotic Mean Integrated Square Error (AMISE)
+# 
+# There are also "rules of thumb", that are generally ok as a first step. Two examples are the Scott's and Silverman's rule. These rules
+# 
+# - are proportional to the scale (variance) of the data and inversely proportional to the number of samples 
+# - are obtained by imposing assumptions on the underlying distribution of the data.
+# 
+# For example the widths of the bins using the Silverman's rule is 
+# 
+# $$
+# h = 0.9 \frac{\min[\sigma, 0.7412 (q_{75} - q_{25})]}{N^{1/5}},
+# $$
+# 
+# where $N$ is the number of observations, $\sigma$ is the standard deviation and $q_{75}-q_{25}$ is the interquartile range. Using the width we can compute the number of bins as 
+# 
+# $$
+# N_{bins} = \frac{\max(x)-\min(x)}{h}
+# $$
+# 
+# The Silverman's rule is optimal only if the underlying distribution is Gaussian
+# 
+# :::{note}
+# 
+# In all these we have assumed a fixed width and uniformly sampled edges but in a more general case the bins could have different widths and/or irregular boundaries (edges)
+# 
+# :::
+# 
+# The [Bayesian blocks method](https://www.astroml.org/examples/algorithms/plot_bayesian_blocks.html) can be used to build histograms with variable-sized bins
+# 
+
+# ## Kernel density estimation (KDE)
+# 
+# KDE can be though as an alternative to histogram where each point has its "own bin", and bins can overlap. Becasue of this KDE does not require choosing bin boundaries, only bin width
+# 
+# The unidimensional KDE for a set $\{x_i\}_{i=1,\ldots, N}$ is
+# 
+# $$
+# \hat f_h(x) = \frac{1}{Nh} \sum_{i=1}^N \kappa \left ( \frac{x - x_i}{h} \right)
+# $$
+# 
+# where $h$ is called the **kernel bandwidth** or kernel size and $\kappa(u)$ is the **kernel function** that need to be positive, zero mean and integrate to unity.
+# 
+# For example, one broadly used kernel is 
+# 
+# $$
+# \kappa(u) = \frac{1}{\sqrt{2\pi}} \exp \left ( - \frac{u^2}{2} \right),
+# $$
+# 
+# the Gaussian kernel. Other widely used kernels for KDE are the Epanechnikov and Top-hat kernels
+# 
+# In a nutshell: 
+# 
+# > KDE places a kernel on top of each point and then averages all the kernels to obtain the density
+# 
+# 
+# :::{caution}
+# 
+# Assuming that the data is **Gaussian distributed** and using KDE with the **Gaussian kernel** are very **different things**! Using the Gaussian kernel for non-Gaussian data is perfectly fine.
+# 
+# :::
+
+# ### Example
+# 
+# KDE is implemented in the `sklearn.neighbors` module as
+# 
+# ```python
+# KernelDensity(kernel='gaussian', # The kernel function
+#               bandwidth=1.0, # The width of the kernel
+#               ...
+#              )
+# ```
+# 
+# The most import methods of this class are
+# 
+# - `fit(xi: np.ndarray)`: Saves the samples that will be used to compute the densities
+# - `score_samples(x: np.ndarray)`: Returns a numpy array with the log density evaluated at x
+# 
+# The following example shows the KDE and underlying densities for the synthetic mixture gaussian data. Use the widgets to explore the influence of the kernel function and the width (with respect to Silverman's)
+
+# In[6]:
+
+
+from sklearn.neighbors import KernelDensity
+hs = 0.9*np.std(samples)*len(samples)**(-1/5)
+
+densities = {}
+for k in [1/8, 1/4, 1/2, 1, 2, 4, 8]:
+    for kernel in ["gaussian", "epanechnikov", "tophat"]:
+        kde = KernelDensity(kernel=kernel, bandwidth=hs*k).fit(samples.reshape(-1, 1))
+        densities[k, kernel] = np.exp(kde.score_samples(x.reshape(-1, 1)))
+
+
+# In[7]:
+
+
+dist_plot = hv.Curve((x, pdf)).opts(line_width=2, color='k', width=500, height=350)
+hmap = hv.HoloMap(kdims=['Width/Silverman', 'Kernel'])
+for key, density in densities.items():
+    hmap[key] = hv.Curve((x, density), kdims='x', vdims='Density').opts(line_width=2)
+
+hmap * dist_plot
+
+
+# In[ ]:
+
+
+
+

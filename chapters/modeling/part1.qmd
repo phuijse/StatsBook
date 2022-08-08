@@ -1,0 +1,537 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+import holoviews as hv
+hv.extension('bokeh')
+
+
+# In[2]:
+
+
+import numpy as np
+import scipy.signal
+
+
+# # Parametric modeling
+# 
+# ## Introduction
+# 
+# Modeling is a key step in the pipeline of statistical inference. In this series of lectures we will learn how to fit parametric and non-parametric models to our data. 
+# 
+# - In the parametric case we will focus on the classical frequentist method to fit models: maximum likelihood estimation (MLE)
+# - Then we will review non-parametric modeling techniques such as the Histogram and Kernel density estimation
+# - After that we will go back to parametric modeling and extend MLE using priors: Maximum a posteriori 
+# - Finally we will present key ideas on bayesian modeling that are to be further developed in a future series of lectures
+# 
+# 
+
+# 
+# 
+# ### What is statistical inference?
+# 
+# 
+# Inference is:
+# 
+# > To draw conclusions from facts through a scientific premise
+# 
+# In the particular case of **Statistical inference** we have
+# 
+# - Facts: Observed data
+# - Premise: Probabilistic model
+# - Conclusion: An unobserved quantity of interest
+# - Objective: Quantify the uncertainty of the conclusion given the data and the premise
+# 
+# 
+# The following are examples examples of statistical inference tasks:
+# 
+# - **Parameter estimation:** What is the best estimate of a model parameter based on the observed data?
+# - **Confidence estimation:** How trustworthy is our point estimate?
+# - **Hypothesis testing:** Is the data consistent with a given hypothesis or model?
+
+# ### The difference between parametric and non-parametric models
+# 
+# To conduct inference we start by defining a statistical model
+# 
+# Models can be broadly classified as:
+# 
+# **Parametric:** 
+# 
+# - It corresponds to an analytical function  (distribution) with free parameters
+# - Has an *a-priori* fixed number of parameters
+# - In general: Stronger assumptions, easier to interpret, faster to use
+# 
+# **Non-parametric:** 
+# 
+# - Distribution-free model but they do have parameters and assumptions (e.g. dependence)
+# - The number of parameters depends on the amount of training data
+# - In general: More flexible, harder to train
+#     
+# 
+
+# ### The difference between Frequentist and Bayesian inference
+# 
+# There are two main paradigms or perspectives for statistical inference: Frequentist (F) or classical and Bayesian (B). There are conceptual differences between these paradigms, for example
+# 
+# **Definition of probability:**
+# 
+# - F: Relative frequency of an event. An objective property of the real world
+# - B: Degree of subjective belief. Probability statements can be made not only on data but also on parameters and models themselves
+# 
+# **Interpretation of parameters:**
+# 
+# - F: They are unknown and fixed constants
+# - B: They have distributions that quantify the uncertainty of our knowledge about them. We can compute expected values of the parameters
+# 
+# In this lecture we will focus on the frequentist approach to modeling. We will review the bayesian perspective in a future lesson
+
+# ## Frequentist approach on parametric modeling 
+# 
+# In the case of **parametric inference** we assume that observations follow a certain distribution, *i.e.* observations are a realization of a random process (sampling) 
+# 
+# The conceptual (iterative) steps of parametric inference are:
+# 
+# 1. **Model fitting:** Find parameters by fitting data to the current model
+# 1. **Model proposition:** Propose a new model that accommodates important features of the data better than the previous one
+# 
+# In the frequentist approach step 1 is typically solved using **Maximum Likelihood Estimation (MLE)**. Other frequentist alternatives are the Method of Moments (MoM) and the M-estimator. Only MLE is covered in this lecture
+# 
+
+# ### The likelihood
+# 
+# The likelihood function is a quantitative description of our experiment (measuring process), and it is the  starting point for **parametric modeling** for both the frequentist and bayesian paradigms. In simple terms the likelihood tells us how good our model is with respect to the **observed data**
+# 
+# Let's now give a mathematical description of the likelihood
+# 
+# - Suppose we have an experiment that we model as a set of R.Vs $X_1, X_2, \ldots, X_N$
+# - We also have observations/realizations from our R.Vs $\{x_i\} = x_1, x_2, \ldots, x_N$
+# - We assume that the R.Vs follow a certain joint probability distribution $f(x_1, x_2, \ldots, x_N | \theta)$ with parameters $\theta$
+# 
+# The likelihood function is then defined as 
+# 
+# $$
+# \begin{align}
+# \mathcal{L}(\theta) &= P(X_1=x_1, X_2=x_2, \ldots, X_N=x_n) \nonumber \\
+# &= f(x_1, x_2, \ldots, x_N | \theta) \nonumber
+# \end{align}
+# $$
+# 
+# which is a function of the parameters $\theta$
+# 
+# For the examples in this lecture we will additionally assumme that our observations are **independent and identically distributed** (iid). With this we can simplify the previous expression as
+# 
+# $$
+# \begin{align}
+# \mathcal{L}(\theta) &= f(x_1| \theta) \cdot f(x_2| \theta) \cdot \ldots \cdot f(x_N| \theta) \nonumber \\
+# &= \prod_{i=1}^N f(x_i| \theta) \nonumber
+# \end{align}
+# $$
+# 
+# 
+# The value of the likelihood itself does not hold much meaning, but it can be used to make comparisons between different values of the parameter vector $\theta$. **The larger the likelihood the better the model**, i.e. likelihood maximization allows us to find the best $\theta$ for our data
+# 
+# Before continuing consider the following
+# 
+# 
+# :::{warning}
+# 
+# **Likelihood is not probability**
+# 
+# :::
+# 
+# - The likelihood of a set of RVs does not integrate (or sum in the discrete case) to unity, *i.e.* in general the likelihood is not a valid probability density function. 
+# - The likelihood by itself cannot be interpreted as a probability of $\theta$, it only tells us how likely is that $\{x_i\}$ was generated by the distribution $f$ with parameter $\theta$
+# 
+# 
+# 
+# 
+
+# ## Maximum Likelihood Estimation (MLE)
+# 
+# 
+# In parametric modeling we are interested in finding $\theta$ that best fit our observations. 
+# 
+# One method to do this is **MLE**:
+# 
+# - **1** Select a distribution (model) for the observations and formulate the likelihood $\mathcal{L}(\theta)$
+# - **2** Search for $\theta$ that maximizes $\mathcal{L}(\theta)$ given the data, *i.e.*
+# 
+# $$
+# \hat \theta = \text{arg} \max_\theta \mathcal{L}(\theta),
+# $$
+# 
+# where the point estimate $\hat \theta$  is called the **maximum likelihood estimator** of $\theta$
+# 
+# After this we can
+# 
+# - **3** Determine the confidence region of $\hat \theta$ either analytically or numerically (bootstrap, cross-validation, etc)
+# - **4** Make conclusions about your model (hypothesis test)
+# 
+# 
+# :::{important}
+# 
+# A wrong assumption in step 1 can ruin your inference. Evaluate how appropriate your model is, compare with other models and suggest incremental improvements
+# 
+# :::
+# 
+# 
+# 
+
+# ###  Example: MLE  for the mean of a Gaussian distribution
+# 
+# Let us consider a set of N measurements $\{x_i\}_{i=1,\ldots, N}$ obtained from a sensor and that all were obtained under the same conditions
+# 
+# The sensor used to measure the data has an error that follows a Gaussian distribution with known variance $\sigma^2$
+# 
+# If the conditions are the same then the measurements can be viewed as noisy realizations of the true value $\mu$
+# 
+# $$
+# x_i = \mu + \epsilon_i, \quad \epsilon_i \sim \mathcal{N}(0, \sigma^2),
+# $$
+# 
+# and we can write the distribution of $x_i$ as 
+# 
+# $$
+# f(x_i) = \mathcal{N}(x_i |\mu,\sigma^2) \quad \forall i
+# $$
+# 
+# Finally, the likelihood of $\mu$ given the measurements and the variance $\sigma^2$ is 
+# 
+# $$
+# \mathcal{L}(\mu) = f(\{x_i\}| \mu, \sigma^2) = \prod_{i=1}^N f(x_i| \mu, \sigma^2) = \frac{1}{\sqrt{2\pi\sigma^2}} \prod_{i=1}^N  \exp  \left( -\frac{(x_i-\mu)^2}{2\sigma^2} \right)
+# $$
+# 
+# We can find $\mu$ by maximizing the likelihood given $\{x_i\}$
+# 
+# 
+
+# :::{tip}
+# 
+# In many cases it is more practical to find the maximum of the **logarithm of the likelihood** (e.g. distributions from the exponential family). Logarithm is a monotonic function and its maximum is the same as its argument.
+# 
+# :::
+# 
+# In this case the log likelihood is
+# 
+# $$
+# \begin{align}
+# \log \mathcal{L} (\mu) &= \log \prod_{i=1}^N f(x_i|\mu, \sigma^2) \nonumber \\
+# &= \sum_{i=1}^N \log f(x_i|\mu, \sigma^2) \nonumber \\
+# &= - \frac{1}{2} \sum_{i=1}^N \log 2\pi\sigma^2 - \frac{1}{2} \sum_{i=1}^N  \frac{(x_i-\mu)^2}{\sigma^2}  \nonumber  \\
+# &=  - \frac{N}{2} \log 2\pi\sigma^2 - \frac{1}{2\sigma^{2}}   \sum_{i=1}^N (x_i-\mu)^2 \nonumber 
+# \end{align}
+# $$
+# 
+# We maximize by making the derivative of the log likelihood equal to zero
+# 
+# $$
+# \frac{d  \log \mathcal{L} (\mu)}{d\mu} =  \frac{1}{\sigma^{2}}  \sum_{i=1}^N (x_i-\mu) =0
+# $$
+# 
+# Finally the MLE of $\mu$ is 
+# 
+# $$
+# \hat \mu = \frac{1}{N} \sum_{i=1}^N x_i, \quad \sigma >0,
+# $$
+# 
+# The [sample mean](https://en.wikipedia.org/wiki/Sample_mean_and_covariance#Definition_of_the_sample_mean) is the MLE estimator of the mean for a Gaussian likelihood
+
+# ### Example: MLE for the variance of a Gaussian distribution
+# 
+# Let's say now that we don't know the variance of the noise of the sensor
+# 
+# The MLE estimator of the variance can be obtained using the same procedure:
+# 
+# $$
+# \log \mathcal{L} (\mu, \sigma^2) =  - \frac{N}{2} \log 2\pi\sigma^2 - \frac{1}{2\sigma^{2}}   \sum_{i=1}^N (x_i-\mu)^2 
+# $$
+# 
+# $$
+# \frac{d  \log \mathcal{L} (\mu, \sigma^2)}{d\sigma^2} =  - \frac{N}{2} \frac{1}{\sigma^2} + \frac{1}{2\sigma^{4}}\sum_{i=1}^N (x_i-\mu)^2 =0
+# $$
+# 
+# $$
+# \hat \sigma^2 = \frac{1}{N} \sum_{i=1}^N (x_i- \hat\mu)^2
+# $$
+# 
+# :::{note}
+# 
+# If the true mean is not known then this is a biased estimator of the true variance. MLE does not guarantee unbiased estimators
+# 
+# :::
+# 
+# The following code example shows how the value of the MLEs of these parameters evolve as more data is observed
+
+# In[3]:
+
+
+# data from the sensor
+np.random.seed(1234)
+x = 80 + np.random.randn(10000)
+#x = 80 + 2*np.random.rand(1000)  # What happens if the data is not normal
+
+# Computing the MLE
+Ns = np.round(np.logspace(0, 4, num=16)).astype('int')
+hat_mu = np.array([np.mean(x[:N]) for N in Ns])
+hat_s2 = np.array([np.mean((x[:N]-mu)**2) for mu, N in zip(hat_mu, Ns)])
+
+
+# In[4]:
+
+
+mu_plot = hv.Curve((Ns, hat_mu), 'Number of samples', 'hat mu')*hv.HLine(80).opts(color='k')
+s2_plot = hv.Curve((Ns, hat_s2), 'Number of samples', 'hat s2')*hv.HLine(1).opts(color='k')
+(mu_plot + s2_plot).opts(hv.opts.Curve(logx=True, width=350), hv.opts.HLine(line_dash='dashed'))
+
+
+# ### A note on biased and unbiased estimators
+# 
+# For a parameter $\theta$ and an estimator $\hat \theta$, if
+# 
+# $$
+# \mathbb{E}[\hat \theta] = \theta,
+# $$
+# 
+# then $\hat \theta$ is an unbiased estimator of $\theta$
+# 
+# 
+# **Is the MLE of $\mu$ unbiased?**
+# 
+# $$
+# \begin{align}
+# \mathbb{E}[\hat \mu] &= \mathbb{E} \left[ \frac{1}{N} \sum_{i=1}^N x_i \right]  \nonumber \\
+# &= \frac{1}{N} \sum_{i=1}^N \mathbb{E}[x_i] = \frac{1}{N} \sum_{i=1}^N \mu = \mu  \nonumber
+# \end{align}
+# $$
+# 
+# > The answer is YES
+# 
+# 
+# **Is the MLE of $\sigma^2$ unbiased?**
+# 
+# First lets expand the expression of the MLE of the variance
+# 
+# $$
+# \begin{align}
+# \hat \sigma^2 &= \frac{1}{N} \sum_{i=1}^N \left(x_i- \frac{1}{N}\sum_{j=1}^N x_j \right)^2 \nonumber \\
+# &= \frac{1}{N} \sum_{i=1}^N x_i^2 - \frac{1}{N^2} \sum_{i=1}^N \sum_{j=1}^N x_i  x_j \nonumber \\
+# &= \frac{1}{N} \sum_{i=1}^N x_i^2 - \frac{1}{N^2} \sum_{i=1}^N \sum_{j\neq i} x_i x_j - \frac{1}{N^2} \sum_{i=1}^N x_i^2 \nonumber  \\
+# &= \frac{N-1}{N^2} \sum_{i=1}^N x_i^2 - \frac{1}{N^2} \sum_{i=1}^N \sum_{j \neq i} x_i x_j  \nonumber
+# \end{align}
+# $$
+# 
+# Then applying the expected value operator we get
+# 
+# $$
+# \begin{align}
+# \mathbb{E}[\hat \sigma^2] &= \frac{N-1}{N^2} \sum_{i=1}^N \mathbb{E} [x_i^2] - \frac{1}{N^2} \sum_{i=1}^N \sum_{j \neq i} \mathbb{E} [x_i] \mathbb{E} [x_j] \nonumber  \\
+# &= \frac{N-1}{N} (\sigma^2 + \mu^2) - \frac{N-1}{N} \mu^2 \nonumber \\
+# &= \frac{N-1}{N} \sigma^2 \neq \sigma^2  \nonumber 
+# \end{align}
+# $$
+# 
+# > The answer is NO
+# 
+# **Can we correct for the bias?**
+# 
+# > In this case, YES!
+# 
+# If we multiply it by $\frac{N}{N-1}$ we obtain the well known [unbiased estimator of the variance](https://en.wikipedia.org/wiki/Unbiased_estimation_of_standard_deviation)
+# 
+# $$
+# \hat \sigma_{u}^2 = \frac{N}{N-1} \hat \sigma^2 = \frac{1}{N-1} \sum_{i=1}^N (x_i- \hat\mu)^2
+# $$
+
+# ### Example: MLE of a Gaussian mixture
+# 
+# Let's imagine that our *iid* data come from a mixture of Gaussians with K components
+# 
+# $$
+# f(x_i|\pi,\mu,\sigma^2) = \sum_{k=1}^K \pi_k \mathcal{N}(x|\mu_k, \sigma_k^2),
+# $$
+# 
+# where $\sum_{k=1}^K \pi_k = 1$ and $\pi_k \in [0, 1] ~~ \forall k$
+# 
+# We can write the log likelihood as
+# 
+# $$
+# \log \mathcal{L}(\pi,\mu,\sigma^2) = \sum_{i=1}^N \log \sum_{k=1}^K \pi_k \mathcal{N}(x|\mu_k, \sigma_k^2)
+# $$
+# 
+# :::{note}
+# 
+# In this case we cannot obtain analytical expressions for the parameters by setting the derivative to zero. We have to resort to iterative methods/optimizers, e.g. gradient descent, expectation maximization
+# 
+# :::
+# 
+# We will come back to this in a future class on expectation maximization and Gaussian mixture models
+# 
+
+# ## Optimality properties and uncertainty of MLEs 
+# 
+# Assuming that the data truly comes from the specified model the MLE is
+# 
+# **Consistent:** The estimate converge to the true parameter as data points increase
+# 
+# $$
+# \lim_{N\to \infty} \hat \theta = \theta
+# $$
+# 
+# **Asymptotically normal:** The distribution of the estimate approaches a normal centered at the true parameter. 
+# 
+# $$
+# \lim_{N\to \infty} p(\hat \theta) = \mathcal{N}(\hat \theta | \theta, \sigma_\theta^2),
+# $$
+# 
+# which is a consequence of the **central limit theorem**
+# 
+# For *i.i.d.* $\{X_i\}, i=1,\ldots,N$ with $\mathbb{E}[X] < \infty$ and $\text{Var}[X] < \infty$ then
+# 
+# $$
+# \lim_{N\to\infty} \sqrt{N} (\bar X - \mathbb{E}[X]) = \mathcal{N}(0, \sigma^2)
+# $$
+# 
+# Because MLE have asymptotically normal distributions the log likelihood ratio have asymptotically a *chi-square* distributions (more about this later)
+
+# **Minimum variance:** The estimate achieve the theoretical minimal variance given by the **Cramer-Rao bound**. This bound is the inverse of the expected Fisher information, *i.e* the second derivative of $- \log L$ with respect to $\theta$
+# 
+# $$
+# \sigma_{nm}^2 =  \left (- \frac{d^2 \log \mathcal{L} (\theta)}{d\theta_n \theta_m} \bigg\rvert_{\theta = \hat\theta}\right)^{-1}
+# $$
+# 
+# :::{note}
+# 
+# - $\sigma_{nm}^2$ is the minimum variance achieved by an unbiased estimator.
+# - $\sigma_{nn}^2$ gives the marginal error bars 
+# - If $\sigma_{nm} \neq 0 ~~ n\neq m$, then errors are correlated, *i.e* some combinations of parameters might be better determined than others
+# 
+# :::
+
+# ### Example: Cramer-Rao bound for the MLE of $\mu$
+# 
+# Considering a Gaussian likelihood from the previous example
+# 
+# $$
+# \log \mathcal{L} (\mu, \sigma^2) =  - \frac{N}{2} \log 2\pi\sigma^2 - \frac{1}{2\sigma^{2}}   \sum_{i=1}^N (x_i-\mu)^2 
+# $$
+# 
+# What is the uncertainty of the MLE of $\mu$? In this case the Cramer-rao bound
+# 
+# $$
+# \begin{align}
+# \sigma_{\hat\mu}^2  &= \left (- \frac{d^2 \log \mathcal{L}(\mu, \sigma^2)}{d\mu^2} \bigg\rvert_{\mu=\hat\mu}\right)^{-1}  \nonumber \\
+# &=  \left (- \frac{1}{\sigma^2} \frac{d}{d\mu}  \sum_{i=1}^N (x-\mu) \bigg\rvert_{\mu=\hat\mu}\right)^{-1}  \nonumber \\
+# &=  \left ( \frac{N}{\sigma^2}  \bigg\rvert_{\mu=\hat\mu}\right)^{-1} = \frac{\sigma^2}{N}  \nonumber
+# \end{align}
+# $$
+# 
+# an expression that is known as the [standard error of the mean](https://en.wikipedia.org/wiki/Standard_error)
+# 
+# Then we have 
+# 
+# $$
+# p(\hat \mu) \to \mathcal{N}(\hat \mu| \mu, \sigma^2/N)
+# $$
+# 
+# Let's see how the MLE and its uncertainty changes as more data is observed
+
+# In[5]:
+
+
+# Generate data
+np.random.seed(12345)
+mu_real, s_real = 2.23142, 1.124123
+x = mu_real + s_real*np.random.randn(10000)
+# MLE and its standard error
+hat_mu = np.array([np.mean(x[:n]) for n in range(1, len(x))])
+standard_error = s_real/np.sqrt(np.arange(1, len(x)))
+
+
+# In[6]:
+
+
+mu_plot = hv.Curve((range(1, len(x)), hat_mu), 
+                   kdims='Number of samples', vdims='mu', label='Estimated mu')
+se_plot = hv.Spread((range(1, len(x)), hat_mu, standard_error), 
+                    kdims='Number of samples', label='Standard error')
+mu_real_plot = hv.HLine(mu_real).opts(line_dash='dashed', color='k', alpha=0.5)
+(mu_plot*se_plot*mu_real_plot).opts(hv.opts.Curve(logx=True, width=500))
+
+
+# ## Hypothesis tests based on the likelihood
+# 
+# Considering the asymptotic distributions shown before we can formulate a hypothesis test for the MLE of $\theta$
+# 
+# We will present the Wald-test and the Wilks test
+
+# ###  Wald-test
+# 
+# Suppose we wish to test
+# 
+# $$
+# \mathcal{H}_0: \theta = \theta_0
+# $$
+# $$
+# \mathcal{H}_A: \theta \neq \theta_0
+# $$
+# 
+# Under the null we can write 
+# 
+# $$
+# W = \frac{(\hat \theta - \theta_0)^2}{\left (- \frac{d^2 \log \mathcal{L} (\theta)}{d\theta^2} \bigg\rvert_{\theta = \hat\theta}\right)^{-1}} = (\hat \theta - \theta_0)^2 \sigma_{\hat \theta}^2 \to \chi^2_1
+# $$
+# 
+# The test statistic have a $\chi^2$ distribution with one degree of freedom
+# 
+# If $W$ is greather than the $(1-\alpha)100\%$ quantile of $\chi^2_1$ we reject the null hypothesis
+# 
+# 
+
+# ### Log-likelihood ratio test or Wilks test
+# 
+# Suppose we wish to test
+# 
+# $$
+# \mathcal{H}_0: \theta = \theta_0
+# $$
+# $$
+# \mathcal{H}_A: \theta =\theta_1
+# $$
+# 
+# We can write a ratio between likelihoods
+# 
+# $$
+# \lambda(\mathcal{D}) = \frac{\mathcal{L}(\theta_0|\mathcal{D})}{\mathcal{L}(\theta_1|\mathcal{D})} 
+# $$
+# 
+# Asymptotically, under the null, we have  
+# 
+# $$
+# -2 \log \lambda(\mathcal{D}) \to \chi^2_1
+# $$
+# 
+# If $-2 \log \lambda(\mathcal{D})$ is greather than the $(1-\alpha)100\%$ quantile of $\chi^2_1$ we reject the null
+
+# ## Criteria for model comparison
+# 
+# How to compare models with different number of parameters? In general the more number of parameters the better the fit (overfitting). The likelihood does not take into account the complexity (number of parameters) of the model
+# 
+# > How to score models taking into account their complexity?
+# 
+# One option is to use the Akaike information criterion (AIC). For a model with $k$ parameters and N data points the AIC is 
+# 
+# $$
+# \text{AIC} = -2 \log \mathcal{L}(\hat \theta) + 2k + \frac{2k(k+1)}{N-k-1},
+# $$
+# 
+# which one seeks to minimize. The AIC combines the likelihood (score) of the model and its complexity. The AIC is based on an asumptotic approximation which we will review in the future
+# 
+# This is also related to the idea of regularization, which will also be reviewed in future lectures
+
+# In[ ]:
+
+
+
+

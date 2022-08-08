@@ -1,0 +1,426 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+import holoviews as hv
+hv.extension('bokeh')
+
+
+# In[2]:
+
+
+import numpy as np
+import scipy.signal
+
+
+# # Bayesian modeling
+# 
+
+# ## Introduction
+# 
+# In this lecture we return to parametric modeling but using the bayesian approach. 
+# 
+# A summary of the bayesian premise
+# 
+# - Inference is made by producing probability density functions (pdf): **posterior**
+# - We model the uncertainty of the data, experiment, parameters, etc. as a **joint pdf**
+# - The parameter vector $\theta$ is a R.V., *i.e.* it follows a distribution: **prior**
+# 
+# The Bayes theorem and the law of total probability tell us
+# 
+# $$
+# p(\theta| \{x\}) = \frac{p(\{x\}, \theta)}{p(\{x\})}= \frac{p(\{x\}|\theta) p(\theta)}{\int p(\{x\}|\theta) p(\theta) d\theta} \propto p(\{x\}|\theta) p(\theta),
+# $$
+# 
+# 
+# 
+
+# :::{note}
+# 
+# The posterior is build from the **likelihood**, **prior** and **evidence** (marginal data likelihood), *i.e.* the posterior can be small if either the likelihood or the prior are small
+# 
+# :::
+# 
+# 
+
+# **Why/When should I use the Bayesian formalism?**
+# 
+# In many cases bayesian inference will not differ much from frequentist techniques. Also, in general, bayesian inference is harder to compute and requires more sophisticated methods
+# 
+# But bayesian modeling gives us some key advantages:
+# 
+# - We know the uncertainty of our parameters/predictions, i.e. and we can take more informed decisions
+# - It gives a principled way of injecting prior knowledge (regularization)
+# - We can integrate unknown or missing (nuisance) parameters
+# 
+
+# The following is a summary of the Bayesian inference procedure
+# 
+# 1. Formulate your problem: likelihood and prior
+# 1. Build a joint distribution (relation of all parameters)
+# 1. Determine the posterior using Bayes Theorem. Find MAP and credible regions
+# 1. Test your hypothesis
+# 1. **Criticize:** Evaluate how appropriate the model is and suggest improvements
+# 
+# We will review these steps in this lesson
+
+# ## Maximum *a posteriori* (MAP) estimation
+# 
+# In the Bayesian setting the best "point estimate" of the parameters of the model is given by the MAP 
+# 
+# $$
+# \hat \theta = \text{arg} \max_\theta p(\theta|\{x\}) =  \text{arg} \max_\theta p(\{x\}| \theta) p(\theta),
+# $$
+# 
+# where we "omit" the evidence (denominator in Bayes rule) because it does not depend on $\theta$
+# 
+# Applying the logarithm (monotonic) we can decouple the likelihood from the prior
+# 
+# $$
+# \hat \theta = \text{arg} \max_\theta \log p(\{x\}| \theta) + \log p(\theta),
+# $$
+# 
+# :::{note}
+# 
+# MAP is still a point estimate: poor's man Bayes
+# 
+# :::
+# 
+# The main difference to what we saw in previous lessons is **the prior**
+
+# ### What can I do with priors?
+# 
+# Priors are distributions that summarize what we know about the parameters before-hand, for example
+# 
+# - a parameter is continuous and has no bounds: Normal
+# - a parameter is continuous and positive: Lognormal, Inverse gamma, Half-normal, etc
+# - a parameter is positive-semidefinite: Inverse Wishart, LKJ, etc
+# - a parameter is in the simplex: Dirichlet
+# 
+# Priors can be described as 
+# 
+# - Informative: $\mathcal{N}(\theta|\mu=5.4, \sigma^2=0.1)$
+# - Weakly informative: $\mathcal{N}(\theta|\mu=0, \sigma^2=100.)$
+# - Uninformative (or objective): My parameter is positive
+# 
+# Of course these notions depend on the problem at hand.
+# 
+# We should select priors that 
+# 
+# - add a positive weight on values that may occur
+# - put zero weight to impossible values
+# - help regularize the solution
+# 
+# Later we will see the case of **conjugate prior**, which are very convenient from a computational point of view
+# 
+# I suggest reading the [practical principles for choosing priors](https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations) in the Stan repository
+# 
+# 
+# 
+
+# 
+# ### Example: MAP estimate of the mean of a Gaussian distribution
+# 
+# Assuming $N$ i.i.d samples and a Gaussian likelihood with known variance we can write
+# 
+# $$
+# \log p(\{x\}|\theta) = \log L (\mu)  = - \frac{N}{2} \log 2\pi\sigma^2 - \frac{1}{2\sigma^{2}}   \sum_{i=1}^N (x_i-\mu)^2, 
+# $$
+# 
+# In this particular example we will select a Gaussian prior with parameters $\mu_0$ and $\sigma_0$ for $\mu$ 
+# 
+# $$
+# \log p(\theta) = -\frac{1}{2} \log 2 \pi \sigma^2_0 - \frac{1}{2 \sigma^2_0}  (\mu - \mu_0)^2,
+# $$
+# 
+# Adding the log likelihood and log prior and taking the derivative
+# 
+# $$
+# \frac{d}{d\mu} \log p(\{x\}|\theta) + \log p(\theta) =   \frac{1}{\sigma^{2}}   \sum_{i=1}^N (x_i-\mu)  - \frac{1}{ \sigma^2_0}  (\mu - \mu_0),
+# $$
+# 
+# then setting the derivative equal to zero gives us the MAP estimate
+# 
+# $$
+# \hat \mu_{\text{map}} =  \left(\frac{N}{\sigma^2} + \frac{1}{\sigma^2_0} \right)^{-1} \left(\frac{N}{\sigma^2} \bar x + \frac{1}{\sigma^2_0} \mu_0 \right),
+# $$
+# 
+# where $\bar x = \frac{1}{N} \sum_{i=1}^N x_i$.
+# 
+# :::{important}
+# 
+# Do not confuse $\sigma^2$ (the likelihood/noise variance) and $\sigma^2_0$ (prior variance)
+# 
+# :::
+# 
+# (Using a bit of algebra) we can write the MAP expression as
+# 
+# $$
+# \begin{align}
+# \hat \mu_{\text{map}}  &=  \left(\frac{N}{\sigma^2} + \frac{1}{\sigma^2_0} \right)^{-1} \left(\frac{N\bar x}{\sigma^2}  + \frac{\mu_0}{\sigma^2_0} \right)  \nonumber \\
+# &=  \frac{N \bar x \sigma^2_0 + \mu_0 \sigma^2}{N\sigma^2_0+ \sigma^2} \nonumber \\
+# &= \frac{\bar x + \mu_0 \frac{\sigma^2}{\sigma^2_0 N}}{1 + \frac{\sigma^2}{\sigma^2_0 N}}  \nonumber \\
+# &= w \bar x + (1-w) \mu_0, \qquad \text{where} \quad w = \frac{1}{1 + \frac{\sigma^2}{\sigma^2_0 N}}  \nonumber
+# \end{align}
+# $$
+# 
+# > The MAP estimate of $\mu$ is a weighted average between $\mu_0$ (prior) and $\bar x$ (the MLE solution)
+# 
+# :::{note}
+# 
+# In the last expression:
+# 
+# - if either $\sigma^2_0 \to \infty$ or $N \to \infty$ then $w\to1$, i.e. the MAP converges to the MLE solution 
+# - the prior is more relevant if have a few sample (small $N$) or a noisy samples (large $\sigma^2$)
+# 
+# :::
+
+# ### Extra: MAP intepretation as a penalized MLE/regularized LS
+# 
+# We can rewrite the MAP optimization problem for a Gaussian likelihood with known variance and a zero-mean Gaussian prior as
+# 
+# $$
+# \begin{align}
+# \hat \mu_{\text{map}}  &= \text{arg} \max_\mu  \log p(\{x\}| \mu, \sigma^2) + \log p(\mu) \nonumber \\
+# &= \text{arg} \max_\mu   - \frac{N}{2} \log 2\pi\sigma^2 - \frac{1}{2\sigma^{2}}   \sum_{i=1}^N (x_i-\mu)^2 -  \frac{1}{2\sigma_0^2} \mu^2 \nonumber \\
+# &= \text{arg} \min_\mu \frac{1}{2\sigma^{2}}   \sum_{i=1}^N (x_i-\mu)^2 +  \frac{1}{2\sigma_0^2} \mu^2 \nonumber \\
+# &= \text{arg} \min_\mu \|x-\mu\|^2  + \lambda \|\mu \|^2, \nonumber
+# \end{align}
+# $$
+# 
+# where $\lambda = \frac{\sigma^2}{\sigma_0^2}$. 
+# 
+# We can recognize the last equation as a regularized least squares problem. In this case a using a Gaussian priors is equivalent to using a L2 norm regularizar on the parameters (this is known as ridge regression). A Laplacian prior yields a L1 regularizer (LASSO) [^lasso]
+# 
+# [^lasso]: Hastie, Tibshirani, Friedman, chapter 3.4 (Shrinkage methods), page 61.
+# 
+# We will review ridge regression in a future lecture
+
+# ## Analytical posterior with conjugate priors
+# 
+# Remember that the MAP is only a point estimate. In a fully-bayesian setting want we are interested in is the posterior of the parameter
+# 
+# In the particular case of a Gaussian likelihod and a Gaussian prior we can rearrange the terms to show that 
+# 
+# $$
+# \begin{align}
+# p(\theta |\{x\}) &\propto p(\{x\} |\theta ) p(\theta ) \nonumber \\
+# &\propto \exp \left ( \frac{1}{2\sigma^2} \sum_{i=1}^N (x_i - \mu)^2 \right) \exp \left ( \frac{1}{2\sigma_0^2} (\mu - \mu_0)^2 \right) \nonumber \\
+# &\propto \exp \left ( -\frac{1}{2 \hat \sigma^2} (\mu - \hat \mu_{\text{map}} )^2 \right),  \nonumber 
+# \end{align}
+# $$
+# 
+# where 
+# 
+# $$
+# \hat \sigma^2 = \left(\frac{N}{\sigma^2} + \frac{1}{\sigma^2_0} \right)^{-1},
+# $$
+# 
+# i.e. the posterior has a closed analytical form and is also Gaussian [^gaussmult]
+# 
+# [^gaussmult]: Another way to show that the posterior is Gaussian is to use the [property of Gaussian pdf multiplication](http://www.tina-vision.net/docs/memos/2003-003.pdf)
+# 
+# > When the resulting posterior has the same distribution as the specified prior we say that the prior is a **conjugate prior for the specified likelihood**
+# 
+# In this particular case the Gaussian distribution is conjugate with itself
+# 
+# Other examples are:
+# 
+# ```{list-table} Conjugacy table
+# :header-rows: 1
+# 
+# * - Likelihood
+#   - Conjugate prior
+# * - Bernoulli
+#   - Beta
+# * - Poisson
+#   - Gamma
+# * - Multinomial or categorial
+#   - Dirichlet
+# * - Exponential
+#   - Gamma
+# * - Normal with unknown variance
+#   - Normal-inverse gamma (NIG)
+# * - Multivariate normal with unknown covariance
+#   - Normal-inverse Wishart
+# ```
+# 
+# 
+
+# ### Interactive example
+# 
+# We generate Gaussian distributed data with $\mu=2$ and $\sigma=1$ and plot the asymptotic distribution of the MLE (yellow) and the analytical posterior (red) and the prior (blue)
+
+# In[3]:
+
+
+from scipy.stats import norm
+
+def mle_mu(xi: np.array) -> float:
+    return np.mean(xi)
+
+def asymptotic_mle(x: np.array, xi: np.array, s2: float) -> np.array:
+    N = len(xi)
+    return norm(loc=mle_mu(xi), scale=np.sqrt(s2/N)).pdf(x)
+
+def map_mu(xi: np.array, mu0: float, s20: float, s2: float):
+    N = len(xi)
+    w = (N*s20)/(N*s20 + s2)
+    return mle_mu(xi)*w + mu0*(1. - w) 
+
+def prior_mu(x: np.array, mu0: float, s20: float) -> np.array:
+    return norm(loc=mu0, scale=np.sqrt(s20)).pdf(x)
+
+def posterior_mu(x: np.array, xi: np.array, mu0: float, s20: float, s2: float) -> np.array:
+    N = len(xi)
+    s2_pos = s2*s20/(N*s20 + s2)
+    mu_pos = map_mu(xi, mu0, s20, s2)
+    return norm(loc=mu_pos, scale=np.sqrt(s2_pos)).pdf(x)
+
+
+# Explore 
+# 
+# - What happens with $N$ grows?
+# - What happens when $\sigma_0$ grows?
+
+# In[4]:
+
+
+mu_real, s2_real = 2., 1.
+x_plot = np.linspace(-5, 5, num=1000)
+true_value = hv.VLine(mu_real).opts(color='k', line_width=2, alpha=0.5)
+hmap = hv.HoloMap(kdims=['N', 'mu0', 's20'])
+for N in [1, 5, 10, 50, 100, 500]:
+    for mu0 in np.linspace(-3, 3, num=5):
+        for s20 in np.logspace(-1, 1, num=3):
+            data = norm(loc=mu_real, scale=np.sqrt(s2_real)).rvs(N, random_state=1234)
+            plot_prior = hv.Curve((x_plot, prior_mu(x_plot, mu0, s20)), 'x', 'density', label='prior') 
+            plot_mle = hv.Curve((x_plot, asymptotic_mle(x_plot, data, s2_real)), label='MLE')
+            plot_post = hv.Curve((x_plot, posterior_mu(x_plot, data, mu0, s20, s2_real)), label='posterior')
+            hmap[(N, mu0, s20)] = (plot_prior * plot_post * plot_mle * true_value).opts(hv.opts.Curve(width=500))
+            
+hmap
+
+
+# ### Conjugate prior for Gaussian likelihood when $\sigma^2$ is unknown
+# 
+# Before we assumed that $\sigma^2$ was a known quantity and we focused on estimating $\mu$
+# 
+# If we now assume that the mean $\mu$ is known and the variance is unknown then the conjugate prior for the variance is an inverse-Gamma distribution
+# 
+# $$
+# p(\sigma^2) = \text{IG}(\sigma^2| \alpha_0, \beta_0) = \frac{\beta_0^{\alpha_0}}{\Gamma(\alpha_0)} x^{-\alpha_0-1} e^{-\frac{\beta_0}{x}}
+# $$
+# 
+# With which the resulting posterior is also 
+# 
+# $$
+# \text{IG}\left(\sigma^2| \alpha_N , \beta_N  \right),
+# $$
+# 
+# where
+# 
+# - $ \alpha_N = \alpha_0 + N/2$
+# - $\beta_N = \beta_0 + \frac{1}{2} \sum_{i=1}^N (x_i - \mu)^2$
+# 
+
+# As both $\alpha$ and $\beta$ encode the strength of the prior the following parameterization is broadly used
+# 
+# $$
+# p(\sigma^2) = \text{IG}(\sigma^2| \alpha, \beta) = \text{IG}\left(\sigma^2 \bigg| \frac{\nu}{2}, \frac{\nu \sigma_0^2}{2}\right)
+# $$
+# 
+# where $\sigma_0^2$ controls the value of the prior and $\nu$ the strength. Note that this is also closely related to the [inverse chi-square distribution](https://en.wikipedia.org/wiki/Inverse-chi-squared_distribution)
+
+# ### Conjugate prior for Gaussian likelihood when both $\mu$ and $\sigma^2$ are unknown
+# 
+# Multiplying the normal prior and the IG prior does not yield a conjugate prior (assumes independence of $\mu$ and $\sigma$). In this case the conjugate prior is hierarchical
+# 
+# $$
+# \begin{align}
+# p(x_i|\mu, \sigma^2) &= \mathcal{N}(\mu, \sigma^2)  \nonumber \\
+# p(\mu|\sigma^2) &= \mathcal{N}(\mu_0, \sigma^2/\lambda_0)  \nonumber \\
+# p(\sigma^2) &= \text{IG}(\alpha, \beta)  \nonumber
+# \end{align}
+# $$
+# 
+# which is called **normal-inverse-gamma (NIG)**, a four parameter distribution 
+# 
+# The NIG prior is
+# 
+# $$
+# p(\mu, \sigma^2) = \text{NIG}(\mu_0, \lambda_0, \alpha_0, \beta_0) = \mathcal{N}(\mu|\mu_0 , \sigma^2/\lambda_0) \text{IG}(\sigma^2|\alpha_0, \beta_0)
+# $$
+# 
+# An the posterior is also NIG
+# 
+# $$
+# p(\mu, \sigma^2|\{x\}) =  \text{NIG}(\mu_n, \lambda_n, \alpha_n, \beta_n)
+# $$  
+# 
+# where
+# 
+# - $\lambda_n = \lambda_0 + N$
+# - $\mu_n = \lambda_n^{-1} \left ( \lambda_0 \mu_0  + N \bar x \right)$
+# - $\alpha_n = \alpha_0 + N/2$
+# - $\beta_n = \beta_0 + 0.5\mu_0^2\lambda_0 + 0.5\sum_i x_i^2 - 0.5\lambda_n \mu_n^2$
+
+# ## Describing the posterior using Credible Interval (CI) and the High Posterior Density (HPD) regions
+# 
+# One way to summarize the posterior is to measure its **width**
+# 
+# The $100(1-\alpha)$ % CI of $\theta$ is a contiguous region $[\theta_{l}, \theta_{u}]$ such that
+# 
+# $$
+# P(\theta_{l}< \theta < \theta_{u}) = 1 - \alpha
+# $$
+# 
+# We have to either know the functional form of the posterior (analytical) or have a posterior from which we can sample from (this is the case if we are using MCMC)
+# 
+# The HPD is an alternative to CI that is better when we have multiple modes. The HPD depends not only on the width but also on the height of the posterior. The following figure shows the difference between them
+# 
+# 
+# <img src="img/HPD.png">
+# 
+
+# ### Example
+# 
+# The 95% CI for the previous example for a given combination of $\mu_0$, $\sigma_0^2$ and $N$ is
+
+# In[5]:
+
+
+mu0, s20, N = 0., 10., 100
+data = norm(loc=mu_real, scale=np.sqrt(s2_real)).rvs(N, random_state=12345)
+
+N = len(data)
+s2_pos = s2_real*s20/(N*s20 + s2_real)
+mu_pos = map_mu(data, mu0, s20, s2_real)
+dist = norm(loc=mu_pos, scale=np.sqrt(s2_pos))
+
+display(f'95 % CI for mu: [{dist.ppf(0.025):0.4f}, {dist.ppf(0.975):0.4f}]')
+
+
+# ### Extra: Mean of the posterior
+# 
+# Other point estimate that can be used to characterize the posterior is
+# 
+# $$
+# \hat \theta = \mathbb{E}[\theta|\{x\}] = \int \theta p(\theta| \{x\}) d\theta,
+# $$
+# 
+# *i.e.* the mean or expected value of the posterior
+
+# ## Help: My posterior does not have an analytical form
+# 
+# In this case we resort to either variational inference (VI) or Markov Chain Monte Carlo (MCMC) methods
+# 
+# We will learn how to use MCMC to sample from intractable posterior distributions in a future lesson
+
+# In[ ]:
+
+
+
+
