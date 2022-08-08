@@ -1,0 +1,28 @@
+project:
+  type: book
+
+book:
+  title: "Statistics with Python"
+  author: "Pablo Huijse"
+  date: "8/8/2022"
+  chapters:
+    - index.qmd
+    - part: "Modeling"
+      chapters:
+        - chapters/modeling/part1.qmd
+          #        - chapters/modeling/part2.qmd
+          #        - chapters/modeling/part3.qmd
+    - references.qmd
+  page-navigation: true
+  page-footer: "Copyright 2022, Pablo Huijse"
+
+bibliography: references.bib
+
+format:
+  html:
+    theme: cosmo
+  pdf:
+    documentclass: scrreprt
+
+
+
