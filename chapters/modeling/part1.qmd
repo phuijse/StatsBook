@@ -1,22 +1,11 @@
 ---
-title: "Quarto Basics"
+title: "Parametric Modeling"
 format:
   html:
     code-fold: true
 jupyter: python3
 ---
 
-```{python}
-
-import holoviews as hv
-hv.extension('bokeh')
-import numpy as np
-import scipy.signal
-
-```
-
-# Parametric modeling
- 
 ## Introduction
  
 Modeling is a key step in the pipeline of statistical inference. In this series of lectures we will learn how to fit parametric and non-parametric models to our data. 
@@ -255,6 +244,12 @@ If the true mean is not known then this is a biased estimator of the true varian
 The following code example shows how the value of the MLEs of these parameters evolve as more data is observed
 
 ```{python}
+
+import holoviews as hv
+hv.extension('bokeh')
+import numpy as np
+import scipy.signal
+
 # data from the sensor
 np.random.seed(1234)
 x = 80 + np.random.randn(10000)
